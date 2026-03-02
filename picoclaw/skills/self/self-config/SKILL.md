@@ -1,27 +1,89 @@
-# Self-Config
+---
+name: self-config
+description: Allows the agent to safely update its own configuration files
+---
 
-> Configure the environment and project settings.
+# Self-Config Skill Capabilities
 
-Configures the agent's environment, including environment variables, tools, and project-specific settings.
+1. Presentation of the `config.json` with secrets redacted.
+2. Staging of a `config.new.json` with utilities for patching, sorting, diffing, and validation.
+3. Safe service restarts with auto-rollback timers.
 
-## When to Use
+## Tools used
+- `scripts/config.sh`: Base utility for presenting redacted JSON files.
+- `scripts/config-patch.sh`: Tools for iterative patching of a staged `config.new.json` file.
+- `scripts/service.sh`: Manages service restarts with auto-rollback.
+- `jq`: Used internally for JSON manipulation.
 
-- Initialize a new project or workspace
-- Configure environment variables
-- Set up project-specific tools and aliases
+## View Current Configuration
 
-## Usage
-
+### Redacted (Full)
 ```bash
-picoclaw use skill keithy/angelhub/picoclaw/skills/self/self-config
+scripts/config.sh redacted
 ```
 
-## Requirements
+### Summary (Filtered)
+Shows only configured models, agents, enabled tools, devices, and heartbeat settings.
+```bash
+scripts/config.sh summary
+```
 
-- Write access to project configuration files
-- Ability to source shell scripts
+---
 
-## Skills Required
+## Workflow: Safe Configuration Update
 
-- `picoclaw:file-ops` - for reading/writing config files
-- `picoclaw:shell` - for executing shell commands
+### 1. Start a Session
+Initialize the staging environment. This redacts sensitive keys (tokens, passwords) into a separate hidden file so they aren't exposed in plain text during editing.
+```bash
+scripts/config-patch.sh start
+```
+
+### 2. Apply Patches
+Apply `jq` filters to the **staged** file. You can run this multiple times.
+```bash
+scripts/config-patch.sh '.path.to.key = "new_value"'
+```
+
+### 3. Review Changes
+Review the diff between the original and the staged (redacted) version.
+```bash
+scripts/config-patch.sh diff
+```
+
+### 4. View Staged Config
+```bash
+scripts/config-patch.sh config
+# OR
+scripts/config-patch.sh summary
+```
+
+### 5. Sort Keys (Optional)
+Sort the keys in the staged file alphabetically.
+```bash
+scripts/config-patch.sh sort
+```
+
+### 6. Reset (Abort)
+If you make a mistake *before* switching, clear the staging files.
+```bash
+scripts/config-patch.sh reset
+```
+
+### 7. Switch & Test (The "Hot" Update)
+Commit the patch, restart the service, and create a timer that will rollback
+unless 'confirm' action is performed. Default is 120 seconds. 
+
+```bash
+TIMEOUT=300 scripts/service.sh restart-auto-rollback
+```
+
+### 8. Confirm
+If the agent is still working and the changes are correct, confirm the update to remove the rollback marker.
+```bash
+scripts/service.sh confirm
+```
+
+## Safety Rules
+1. **Always** use `start` before applying patches.
+2. **Never** manually edit the `.secrets.json` file.
+3. **Always** confirm your changes within the time limit after a `switch`.
