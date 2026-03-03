@@ -33,8 +33,9 @@ jobs:
           FILENAME="${WITHOUT_REF##*/}"
           NAME="${FILENAME%.*}"
 
-          echo "WORKFLOW_NAME=${NAME}"        >> $GITHUB_ENV
-          echo "SEARCH_PATHS=${SEARCH_PATHS}" >> $GITHUB_ENV
+          echo "WORKFLOW_NAME=${NAME}"                      >> $GITHUB_ENV
+          echo "SEARCH_PATHS=${SEARCH_PATHS}"               >> $GITHUB_ENV
+          echo "GITHUB_REPOSITORY=${{ github.repository }}" >> $GITHUB_ENV
 
       - uses: actions/checkout@v4
 
