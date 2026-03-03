@@ -1,0 +1,16 @@
+[
+  {
+    "slug": "skill-one",
+    "name": "Skill One",
+    "description": "From external source",
+    "download_url": "https://raw.githubusercontent.com/other/repo/main/path",
+    "files": ["SKILL.md"]
+  },
+  {
+    "slug": "skill-two",
+    "name": "Skill Two",
+    "description": "Another external skill",
+    "download_url": "https://raw.githubusercontent.com/other/repo/main/other",
+    "files": ["SKILL.md"]
+  }
+]
