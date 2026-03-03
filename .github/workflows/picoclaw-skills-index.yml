@@ -22,122 +22,212 @@ jobs:
   index:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Get Workflow Filename
+      - name: Set Defaults
         id: workflow
+        env:
+          SEARCH_PATHS: ${{ github.event.inputs.search_paths || 'picoclaw/skills,skills' }}
         run: |
+          # Set Defaults
           FULL_REF="${{ github.workflow_ref }}"
           WITHOUT_REF="${FULL_REF%@*}"
           FILENAME="${WITHOUT_REF##*/}"
           NAME="${FILENAME%.*}"
-          echo "name=${NAME}" >> $GITHUB_OUTPUT
 
-      - name: Set Defaults
-        run: |
-          echo "search_paths=picoclaw/skills,skills" >> $GITHUB_ENV
+          echo "WORKFLOW_NAME=${NAME}"        >> $GITHUB_ENV
+          echo "SEARCH_PATHS=${SEARCH_PATHS}" >> $GITHUB_ENV
+
+      - uses: actions/checkout@v4
 
       - name: Generate Skills Index
-        env:
-          WORKFLOW_NAME: ${{ steps.workflow.outputs.name }}
-          INPUT_SEARCH_PATHS: ${{ github.event.inputs.search_paths || env.search_paths }}
         id: index
+        shell: python
         run: |
-          set -x
-          shopt -s nullglob
+
+          import os
+          import json
+          import re
+          from pathlib import Path
+          from datetime import datetime, timezone
+
+          search_paths = '${{ env.SEARCH_PATHS }}'.split(',')
+          repo = '${{ env.GITHUB_REPOSITORY }}'
+          output_file = '${{ env.WORKFLOW_NAME }}' + '.json'
           
-          OUTPUT_FILE="${WORKFLOW_NAME}.json"
-          # Set IFS to comma to split paths while preserving spaces
-          IFS=',' read -ra SEARCH_PATHS <<< "${INPUT_SEARCH_PATHS:-}"
-          for base_path in "${SEARCH_PATHS[@]}"; do
-            all_md_files="$all_md_files $(find "$base_path" -name 'SKILL.md' -type f 2>/dev/null)"
-          done
+          local_skills = []
+          included_skills = []
           
-          # Find all JSON include files
-          all_json_files=""
-          for base_path in "${SEARCH_PATHS[@]}"; do
-            all_json_files="$all_json_files $(find "$base_path" -name '*.json' -type f 2>/dev/null)"
-          done
+          def extract_frontmatter(content):
+              """Extract YAML frontmatter from markdown."""
+              if content.startswith('---'):
+                  end = content.find('---', 3)
+                  if end > 0:
+                      fm = content[3:end]
+                      name_match = re.search(r'^name:\s*(.+)$', fm, re.MULTILINE)
+                      desc_match = re.search(r'^description:\s*(.+)$', fm, re.MULTILINE)
+                      return name_match.group(1).strip() if name_match else '', desc_match.group(1).strip() if desc_match else ''
+              return None, None
           
-          # Process SKILL.md files
-          > local_skills.json
-          for file in $all_md_files; do
-            slug=$(basename "$(dirname "$file")")
-            folder="${file%/*}"
-            
-            name=""
-            description=""
-            if grep -q '^---$' "$file" 2>/dev/null; then
-              name=$(sed -n '/^---$/,/^---$/{/^---$/d; /^name:/s/.*name: *//p; q}' "$file")
-              description=$(sed -n '/^---$/,/^---$/{/^---$/d; /^description:/s/.*description: *//p; q}' "$file")
-            fi
-            if [ -z "$name" ]; then
-              name=$(sed -n 's/^# *//p' "$file" | head -1)
-            fi
-            if [ -z "$description" ]; then
-              description=$(sed -n '2,/^#/{s/^## *//; s/^# *//; s/^> *//; p; q}' "$file")
-            fi
-            
-            download_url="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/${folder}"
-            files=$(cd "$(dirname "$file")" && find . -type f | sed 's|^\./||' | jq -R -s -c 'split("\n") | map(select(length > 0))')
-            
-            echo "{\"slug\":\"$slug\",\"name\":\"$name\",\"description\":\"$description\",\"path\":\"$file\",\"download_url\":\"$download_url\",\"files\":$files}" >> local_skills.json
-          done
+          def extract_from_content(content):
+              """Extract name/description from markdown content."""
+              lines = content.split('\n')
+              
+              # First non-empty line should be the title
+              name = ''
+              for line in lines:
+                  line = line.strip()
+                  if line:
+                      if line.startswith('#'):
+                          name = re.sub(r'^#+\s*', '', line).strip()
+                      break
+              
+              # Description from second non-empty heading or blockquote
+              desc = ''
+              in_desc = False
+              for line in lines[1:]:
+                  line = line.strip()
+                  if line.startswith('##') or line.startswith('# '):
+                      break
+                  if line.startswith('>') or line.startswith('> '):
+                      if not in_desc:
+                          in_desc = True
+                      desc = line.lstrip('> ').strip()
+                      break
+              
+              return name, desc
           
-          # Process JSON includes - only include objects with slug field
-          > included_skills.json
-          for file in $all_json_files; do
-            cat "$file" | jq -c 'if type == "array" then .[] else . end | select(type == "object" and has("slug"))' >> included_skills.json 2>/dev/null || true
-          done
+          def process_skill_md(filepath, folder):
+              """Process a SKILL.md file."""
+
+              with open(filepath, 'r') as f:
+                  content = f.read()
+              
+              # Try frontmatter first
+              name, description = extract_frontmatter(content)
+              
+              # Fall back to content extraction
+              if not name:
+                  name, description = extract_from_content(content)
+              
+              # Get list of files in folder
+              files = [p.name for p in Path(filepath).parent.iterdir() if p.is_file()]
+              
+              download_url = f"https://raw.githubusercontent.com/{repo}/main/{folder}"
+              
+              slug = Path(filepath).parent.name
+              
+              return {
+                  "slug": slug,
+                  "name": name or slug,
+                  "description": description or "",
+                  "_path": folder,
+                  "download_url": download_url,
+                  "files": files
+              }
           
-          # Merge
-          jq -s '.' local_skills.json > tmp.json
-          mv tmp.json local_skills.json
-          jq -s '.' included_skills.json > tmp.json
-          mv tmp.json included_skills.json
-          jq -n --slurpfile local local_skills.json --slurpfile included included_skills.json '{skills: ($local + $included)}' > "$OUTPUT_FILE"
+          def process_json_file(filepath):
+              """Process a JSON file, extracting skill objects."""
+              try:
+                  with open(filepath, 'r') as f:
+                      data = json.load(f)
+                  
+                  folder = os.path.dirname(filepath)
+                  
+                  if isinstance(data, list):
+                      skills = []
+                      for s in data:
+                          if isinstance(s, dict) and 'slug' in s:
+                              s = s.copy()
+                              slug = s['slug']
+                              s['_path'] = folder if folder.endswith(slug) else os.path.join(folder, slug)
+                              skills.append(s)
+                      return skills
+                  elif isinstance(data, dict) and 'slug' in data:
+                      data = data.copy()
+                      slug = data['slug']
+                      data['_path'] = folder if folder.endswith(slug) else os.path.join(folder, slug)
+                      return [data]
+                  return []
+              except:
+                  return []
+
           
-          # Add timestamp
-          timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          jq --arg ts "$timestamp" '. + {"updated_at": $ts}' "$OUTPUT_FILE" > tmp.json && mv tmp.json "$OUTPUT_FILE"
+          # Walk each search path
+          for base_path in search_paths:
+              base_path = base_path.strip()
+              if not base_path or not os.path.exists(base_path):
+                  continue
+              
+              print(f"=== DEBUG: Walking {base_path} ===")
+              
+              # Walk directory tree
+              for root, dirs, files in os.walk(base_path):
+                  folder = root
+                  
+                  print(f"=== DEBUG: Checking {root}, files: {files} ===")
+                  
+                  # If SKILL.md exists, process it
+                  if 'SKILL.md' in files:
+                      skill_path = os.path.join(root, 'SKILL.md')
+                      try:
+                          skill = process_skill_md(skill_path, folder)
+                          local_skills.append(skill)
+                          print(f"=== DEBUG: Added skill: {skill['slug']} ===")
+                      except Exception as e:
+                          print(f"=== DEBUG: Error processing {skill_path}: {e} ===")
+                  
+                  # Process any JSON files in this directory
+                  json_files = [f for f in files if f.endswith('.json')]
+
+                  for json_file in json_files:
+                      json_path = os.path.join(root, json_file)
+                      skills = process_json_file(json_path)
+                      included_skills.extend(skills)
+                      print(f"=== DEBUG: Added {len(skills)} from {json_file} ===")
+          
+          # Merge and output
+          result = {
+              "skills": local_skills + included_skills,
+              "updated_at": datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%SZ')
+          }
+          
+          with open(output_file, 'w') as f:
+              json.dump(result, f, indent=2)
+          
+          print(f"=== DEBUG: Wrote {len(result['skills'])} skills to {output_file} ===")
 
       - name: Generate Output Files
         run: |
-          workflow_name="${{ steps.workflow.outputs.name }}"
-          
           # Generate markdown list for summary
-          cat > "${workflow_name}.md" << 'EOF'
+          
+          cat > "${WORKFLOW_NAME}.md" << 'EOF'
           | Slug | Name | Description |
           |------|------|-------------|
           EOF
-          jq -r '.skills[] | select(type == "object") | "| \(.slug) | \(.name // .slug) | \(.description // "") |"' "${workflow_name}.json" >> "${workflow_name}.md"
+
+          jq -r '.skills[] | select(type == "object") | "| \(.slug) | \(.name // .slug) | \(.description // "") |"' "${WORKFLOW_NAME}.json" >> "${WORKFLOW_NAME}.md"
           
           # Add link to JSON file
-          echo "" >> "${workflow_name}.md"
-          echo "[${workflow_name}.json](${workflow_name}.json)" >> "${workflow_name}.md"
+          echo "" >> "${WORKFLOW_NAME}.md"
+          echo "[${WORKFLOW_NAME}.json](${WORKFLOW_NAME}.json)" >> "${WORKFLOW_NAME}.md"
 
       - name: Update Wiki
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Clone wiki repo and update skills index
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-          workflow_name="${{ steps.workflow.outputs.name }}"
-
           git clone --depth 1 https://x-access-token:$GITHUB_TOKEN@github.com/${{ github.repository }}.wiki.git wiki
           cd wiki
-          cp "../${workflow_name}.json" .
-          cp "../${workflow_name}.md" .
+          cp "../${WORKFLOW_NAME}".* .
           git add .
           git commit -m "Update skills index" || echo "No changes to commit"
           git push
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update Workflow Summary
         run: |
-          workflow_name="${{ steps.workflow.outputs.name }}"
-          count=$(jq '.skills | length' "${workflow_name}.json")
-          echo "## Skills Index" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          count=$(jq '.skills | length' "${WORKFLOW_NAME}.json")
+          echo "## Skills Index"      >> $GITHUB_STEP_SUMMARY
+          echo ""                     >> $GITHUB_STEP_SUMMARY
           echo "Total skills: $count" >> $GITHUB_STEP_SUMMARY
