@@ -19,7 +19,6 @@ on:
 
 permissions:
   contents: write
-  gists: write
 
 jobs:
   index:
@@ -88,43 +87,20 @@ jobs:
           path: skills-index.json
           retention-days: 32
 
-      - name: Update Gist
-        id: gist
+      - name: Update Wiki
         run: |
-          set -x
-          # Gist-id filename matches workflow name (without .yml) - same as config workflow field
-          GIST_ID_FILE=".github/skills-index.gist-id"
-          
-          # Try to read existing gist ID from file
-          if [ -f "$GIST_ID_FILE" ]; then
-            GIST_ID=$(cat "$GIST_ID_FILE")
-          else
-            GIST_ID=""
-          fi
-          
-          if [ -z "$GIST_ID" ]; then
-            # Create new gist
-            RESULT=$(gh gist create --public --desc "PicoClaw Skills Index" skills-index.json)
-            GIST_ID=${RESULT##*/}  # remove everything up to last /
-            echo "Created new gist: $GIST_ID"
-            # Save gist ID to file
-            mkdir -p .github
-            echo "$GIST_ID" > "$GIST_ID_FILE"
-            echo "::warning::New gist created and saved to $GIST_ID_FILE"
-          else
-            gh gist edit "$GIST_ID" --filename skills-index.json
-          fi
-          echo "gist_url=https://gist.github.com/$GIST_ID" >> $GITHUB_OUTPUT
-          echo "Gist URL: https://gist.github.com/$GIST_ID"
-          set +x
+          # Clone wiki repo and update skills index
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          git clone --depth 1 https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git wiki
+          cd wiki
+          cp ../skills-index.json .
+          git add .
+          git commit -m "Update skills index" || echo "No changes to commit"
+          git push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Commit Gist ID
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "chore: update skills index gist ID"
-          file_pattern: ".github/*.gist-id"
 
       - name: Update Workflow Summary
         run: |
@@ -134,6 +110,4 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           cat skills-table.md >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Gist:** ${{ steps.gist.outputs.gist_url }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Download the full index from the artifact or gist." >> $GITHUB_STEP_SUMMARY
+          echo "**Wiki:** https://github.com/${{ github.repository }}/wiki/skills-index.json" >> $GITHUB_STEP_SUMMARY
