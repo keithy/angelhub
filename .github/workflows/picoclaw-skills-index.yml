@@ -6,9 +6,7 @@ on:
     paths:
       - 'picoclaw/skills/**/SKILL.md'
       - 'skills/**/SKILL.md'
-      - '.github/workflows/skills-index.yml'
-  schedule:
-    - cron: '0 0 1 * *'  # Monthly on the 1st
+      - '.github/workflows/picoclaw-skills-index.yml'
   workflow_dispatch:
     inputs:
       search_paths:
@@ -35,13 +33,15 @@ jobs:
           search_paths="${INPUT_SEARCH_PATHS:-picoclaw/skills}"
           search_paths="${search_paths//,/ }"
           
-          # Find all SKILL.md files and generate index
-          index_json=$(for base_path in $search_paths; do
+          # Generate skills index
+          # 1. Find SKILL.md files and generate entries
+          local_skills=$(for base_path in $search_paths; do
             find "$base_path" -name 'SKILL.md' -type f 2>/dev/null
           done | while read file; do
             # slug = parent dir, category = grandparent dir
             slug=$(basename "$(dirname "$file")")
             category=$(basename "$(dirname "$(dirname "$file")")")
+            folder="${file%/*}"
             
             # Extract frontmatter or first heading as name/description
             # Try frontmatter first (YAML between ---)
@@ -58,34 +58,45 @@ jobs:
               description=$(sed -n '2,/^#/{s/^## *//; s/^# *//; p; q}' "$file")
             fi
             
-            # Build folder URL - use GitHub Contents API to list files
-            # Consumer: curl -sL "https://api.github.com/repos/owner/repo/contents/path" | jq -r '.[].download_url'
-            folder="${file%/*}"
-            download_url="https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/${folder}"
+            # Build raw URL for folder
+            download_url="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/${folder}"
             
-            echo "{\"slug\":\"$slug\",\"name\":\"$name\",\"description\":\"$description\",\"path\":\"$file\",\"download_url\":\"$download_url\"}"
+            # List all files in the skill folder (relative paths from folder)
+            files=$(cd "$(dirname "$file")" && find . -type f | sed 's|^\./||' | jq -R -s -c 'split("\n") | map(select(length > 0))')
+            
+            echo "{\"slug\":\"$slug\",\"name\":\"$name\",\"description\":\"$description\",\"path\":\"$file\",\"download_url\":\"$download_url\",\"files\":$files}"
           done | jq -s '.')
+          
+          # 2. Find *.json include files and merge them
+          included_skills=$(for base_path in $search_paths; do
+            find "$base_path" -name '*.json' -type f 2>/dev/null
+          done | while read file; do
+            cat "$file"
+          done | jq -s '.')
+          
+          # Merge local skills with included skills
+          index_json=$(jq -n --argjson local "$local_skills" --argjson included "$included_skills" '$local + $included')
           
           # Create full index with timestamp
           echo "{\"version\":1,\"updated_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"skills\":$index_json}" > skills-index.json
-          
-          # Generate markdown table for summary
-          cat > skills-table.md << 'EOF'
+
+      - name: Get Workflow Filename
+        id: workflow
+        run: |
+          FULL_REF="${{ github.workflow_ref }}"
+          WITHOUT_REF="${FULL_REF%@*}"
+          FILENAME="${WITHOUT_REF##*/}"
+          echo "name=${FILENAME%.*}" >> $GITHUB_OUTPUT
+
+      - name: Generate Markdown List
+        run: |
+          # Generate markdown list for summary
+          workflow_name="${{ steps.workflow.outputs.name }}"
+          cat > "${workflow_name}.md" << 'EOF'
           | Slug | Name | Description |
           |------|------|-------------|
           EOF
-          jq -r '.skills[] | "| \(.slug) | \(.name // .slug) | \(.description // "") |"' skills-index.json >> skills-table.md
-          
-          # Output for subsequent steps
-          echo "index_file=skills-index.json" >> $GITHUB_OUTPUT
-          echo "table_file=skills-table.md" >> $GITHUB_OUTPUT
-
-      - name: Upload Skills Index Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: skills-index
-          path: skills-index.json
-          retention-days: 32
+          jq -r '.skills[] | "| \(.slug) | \(.name // .slug) | \(.description // "") |"' skills-index.json >> "${workflow_name}.md"
 
       - name: Update Wiki
         run: |
@@ -93,9 +104,12 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-          git clone --depth 1 https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git wiki
+          workflow_name="${{ steps.workflow.outputs.name }}"
+
+          git clone --depth 1 https://x-access-token:$GITHUB_TOKEN@github.com/${{ github.repository }}.wiki.git wiki
           cd wiki
           cp ../skills-index.json .
+          cp "../${workflow_name}.md" .
           git add .
           git commit -m "Update skills index" || echo "No changes to commit"
           git push
@@ -104,10 +118,7 @@ jobs:
 
       - name: Update Workflow Summary
         run: |
+          count=$(jq '.skills | length' skills-index.json)
           echo "## Skills Index" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Last updated: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          cat skills-table.md >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Wiki:** https://github.com/${{ github.repository }}/wiki/skills-index.json" >> $GITHUB_STEP_SUMMARY
+          echo "Total skills: $count" >> $GITHUB_STEP_SUMMARY

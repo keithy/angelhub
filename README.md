@@ -12,9 +12,33 @@ AngelHub provides reusable skills for AI agents across multiple ecosystems.
 
 ## Quick Start
 
+### 1. Enable AngelHub Registry
+
+Add to your `config.json`:
+
+```json
+{
+  "tools": {
+    "skills": {
+      "registries": {
+        "index:angelhub": {
+          "enabled": true,
+          "index_url": "https://raw.githubusercontent.com/wiki/keithy/angelhub/skills-index.json"
+        }
+      }
+    }
+  }
+}
+```
+
+### 2. Search and Install Skills
+
 ```bash
+# Search for skills
+picoclaw skills search self
+
 # Install a skill
-picoclaw skill install keithy/angelhub/picoclaw/skills/self/self-config
+picoclaw skills install --registry index:angelhub self-config
 ```
 
 ## Directory Structure
@@ -27,6 +51,10 @@ angelhub/
             └── <skill_name>/
                 └── SKILL.md
 ```
+
+## Scalability
+
+The skills index is a static JSON file fetched over HTTP. At ~370 bytes per skill, 5000 skills is approximately 2MB - well within acceptable limits for HTTP transport. No query engine or API server required.
 
 ## License
 
