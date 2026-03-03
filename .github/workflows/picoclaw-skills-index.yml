@@ -109,8 +109,8 @@ jobs:
               if not name:
                   name, description = extract_from_content(content)
               
-              # Get list of files in folder
-              files = [p.name for p in Path(filepath).parent.iterdir() if p.is_file()]
+              # Get list of all files in folder (recursive)
+              files = [str(p.relative_to(Path(filepath).parent)) for p in Path(filepath).parent.rglob('*') if p.is_file()]
               
               download_url = f"https://raw.githubusercontent.com/{repo}/main/{folder}"
               
