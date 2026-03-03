@@ -12,7 +12,7 @@ on:
       search_paths:
         description: 'Comma-separated list of paths to search for SKILL.md files'
         required: false
-        default: 'picoclaw/skills'
+        default: 'picoclaw/skills,skills'
         type: string
 
 permissions:
@@ -24,62 +24,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Generate Skills Index
-        env:
-          INPUT_SEARCH_PATHS: ${{ github.event.inputs.search_paths }}
-        id: index
-        run: |
-          # Convert comma-separated input to space-separated
-          search_paths="${INPUT_SEARCH_PATHS:-picoclaw/skills}"
-          search_paths="${search_paths//,/ }"
-          
-          # Generate skills index
-          # 1. Find SKILL.md files and generate entries
-          local_skills=$(for base_path in $search_paths; do
-            find "$base_path" -name 'SKILL.md' -type f 2>/dev/null
-          done | while read file; do
-            # slug = parent dir, category = grandparent dir
-            slug=$(basename "$(dirname "$file")")
-            category=$(basename "$(dirname "$(dirname "$file")")")
-            folder="${file%/*}"
-            
-            # Extract frontmatter or first heading as name/description
-            # Try frontmatter first (YAML between ---)
-            if grep -q '^---$' "$file" 2>/dev/null; then
-              name=$(sed -n '/^---$/,/^---$/{/^---$/d; /^name:/s/.*name: *//p; q}' "$file")
-              description=$(sed -n '/^---$/,/^---$/{/^---$/d; /^description:/s/.*description: *//p; q}' "$file")
-            fi
-            
-            # Fallback to first heading if no frontmatter
-            if [ -z "$name" ]; then
-              name=$(sed -n 's/^# *//p' "$file" | head -1)
-            fi
-            if [ -z "$description" ]; then
-              description=$(sed -n '2,/^#/{s/^## *//; s/^# *//; p; q}' "$file")
-            fi
-            
-            # Build raw URL for folder
-            download_url="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/${folder}"
-            
-            # List all files in the skill folder (relative paths from folder)
-            files=$(cd "$(dirname "$file")" && find . -type f | sed 's|^\./||' | jq -R -s -c 'split("\n") | map(select(length > 0))')
-            
-            echo "{\"slug\":\"$slug\",\"name\":\"$name\",\"description\":\"$description\",\"path\":\"$file\",\"download_url\":\"$download_url\",\"files\":$files}"
-          done | jq -s '.')
-          
-          # 2. Find *.json include files and merge them
-          included_skills=$(for base_path in $search_paths; do
-            find "$base_path" -name '*.json' -type f 2>/dev/null
-          done | while read file; do
-            cat "$file"
-          done | jq -s '.')
-          
-          # Merge local skills with included skills
-          index_json=$(jq -n --argjson local "$local_skills" --argjson included "$included_skills" '$local + $included')
-          
-          # Create full index with timestamp
-          echo "{\"version\":1,\"updated_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"skills\":$index_json}" > skills-index.json
-
       - name: Get Workflow Filename
         id: workflow
         run: |
@@ -88,6 +32,74 @@ jobs:
           FILENAME="${WITHOUT_REF##*/}"
           NAME="${FILENAME%.*}"
           echo "name=${NAME}" >> $GITHUB_OUTPUT
+
+      - name: Set Defaults
+        run: |
+          echo "search_paths=picoclaw/skills,skills" >> $GITHUB_ENV
+
+      - name: Generate Skills Index
+        env:
+          WORKFLOW_NAME: ${{ steps.workflow.outputs.name }}
+          INPUT_SEARCH_PATHS: ${{ github.event.inputs.search_paths || env.search_paths }}
+        id: index
+        run: |
+          set -x
+          shopt -s nullglob
+          
+          OUTPUT_FILE="${WORKFLOW_NAME}.json"
+          # Set IFS to comma to split paths while preserving spaces
+          IFS=',' read -ra SEARCH_PATHS <<< "${INPUT_SEARCH_PATHS:-}"
+          for base_path in "${SEARCH_PATHS[@]}"; do
+            all_md_files="$all_md_files $(find "$base_path" -name 'SKILL.md' -type f 2>/dev/null)"
+          done
+          
+          # Find all JSON include files
+          all_json_files=""
+          for base_path in "${SEARCH_PATHS[@]}"; do
+            all_json_files="$all_json_files $(find "$base_path" -name '*.json' -type f 2>/dev/null)"
+          done
+          
+          # Process SKILL.md files
+          > local_skills.json
+          for file in $all_md_files; do
+            slug=$(basename "$(dirname "$file")")
+            folder="${file%/*}"
+            
+            name=""
+            description=""
+            if grep -q '^---$' "$file" 2>/dev/null; then
+              name=$(sed -n '/^---$/,/^---$/{/^---$/d; /^name:/s/.*name: *//p; q}' "$file")
+              description=$(sed -n '/^---$/,/^---$/{/^---$/d; /^description:/s/.*description: *//p; q}' "$file")
+            fi
+            if [ -z "$name" ]; then
+              name=$(sed -n 's/^# *//p' "$file" | head -1)
+            fi
+            if [ -z "$description" ]; then
+              description=$(sed -n '2,/^#/{s/^## *//; s/^# *//; s/^> *//; p; q}' "$file")
+            fi
+            
+            download_url="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/${folder}"
+            files=$(cd "$(dirname "$file")" && find . -type f | sed 's|^\./||' | jq -R -s -c 'split("\n") | map(select(length > 0))')
+            
+            echo "{\"slug\":\"$slug\",\"name\":\"$name\",\"description\":\"$description\",\"path\":\"$file\",\"download_url\":\"$download_url\",\"files\":$files}" >> local_skills.json
+          done
+          
+          # Process JSON includes - only include objects with slug field
+          > included_skills.json
+          for file in $all_json_files; do
+            cat "$file" | jq -c 'if type == "array" then .[] else . end | select(type == "object" and has("slug"))' >> included_skills.json 2>/dev/null || true
+          done
+          
+          # Merge
+          jq -s '.' local_skills.json > tmp.json
+          mv tmp.json local_skills.json
+          jq -s '.' included_skills.json > tmp.json
+          mv tmp.json included_skills.json
+          jq -n --slurpfile local local_skills.json --slurpfile included included_skills.json '{skills: ($local + $included)}' > "$OUTPUT_FILE"
+          
+          # Add timestamp
+          timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          jq --arg ts "$timestamp" '. + {"updated_at": $ts}' "$OUTPUT_FILE" > tmp.json && mv tmp.json "$OUTPUT_FILE"
 
       - name: Generate Output Files
         run: |
@@ -98,10 +110,7 @@ jobs:
           | Slug | Name | Description |
           |------|------|-------------|
           EOF
-          jq -r '.skills[] | "| \(.slug) | \(.name // .slug) | \(.description // "") |"' skills-index.json >> "${workflow_name}.md"
-          
-          # Rename json to match workflow name
-          mv skills-index.json "${workflow_name}.json"
+          jq -r '.skills[] | select(type == "object") | "| \(.slug) | \(.name // .slug) | \(.description // "") |"' "${workflow_name}.json" >> "${workflow_name}.md"
           
           # Add link to JSON file
           echo "" >> "${workflow_name}.md"
@@ -127,7 +136,8 @@ jobs:
 
       - name: Update Workflow Summary
         run: |
-          count=$(jq '.skills | length' skills-index.json)
+          workflow_name="${{ steps.workflow.outputs.name }}"
+          count=$(jq '.skills | length' "${workflow_name}.json")
           echo "## Skills Index" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Total skills: $count" >> $GITHUB_STEP_SUMMARY
