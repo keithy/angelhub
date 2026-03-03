@@ -1,0 +1,139 @@
+name: Skills Index
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'picoclaw/skills/**/SKILL.md'
+      - 'skills/**/SKILL.md'
+      - '.github/workflows/skills-index.yml'
+  schedule:
+    - cron: '0 0 1 * *'  # Monthly on the 1st
+  workflow_dispatch:
+    inputs:
+      search_paths:
+        description: 'Comma-separated list of paths to search for SKILL.md files'
+        required: false
+        default: 'picoclaw/skills'
+        type: string
+
+permissions:
+  contents: write
+  gists: write
+
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate Skills Index
+        env:
+          INPUT_SEARCH_PATHS: ${{ github.event.inputs.search_paths }}
+        id: index
+        run: |
+          # Convert comma-separated input to space-separated
+          search_paths="${INPUT_SEARCH_PATHS:-picoclaw/skills}"
+          search_paths="${search_paths//,/ }"
+          
+          # Find all SKILL.md files and generate index
+          index_json=$(for base_path in $search_paths; do
+            find "$base_path" -name 'SKILL.md' -type f 2>/dev/null
+          done | while read file; do
+            # slug = parent dir, category = grandparent dir
+            slug=$(basename "$(dirname "$file")")
+            category=$(basename "$(dirname "$(dirname "$file")")")
+            
+            # Extract frontmatter or first heading as name/description
+            # Try frontmatter first (YAML between ---)
+            if grep -q '^---$' "$file" 2>/dev/null; then
+              name=$(sed -n '/^---$/,/^---$/{/^---$/d; /^name:/s/.*name: *//p; q}' "$file")
+              description=$(sed -n '/^---$/,/^---$/{/^---$/d; /^description:/s/.*description: *//p; q}' "$file")
+            fi
+            
+            # Fallback to first heading if no frontmatter
+            if [ -z "$name" ]; then
+              name=$(sed -n 's/^# *//p' "$file" | head -1)
+            fi
+            if [ -z "$description" ]; then
+              description=$(sed -n '2,/^#/{s/^## *//; s/^# *//; p; q}' "$file")
+            fi
+            
+            # Build folder URL - use GitHub Contents API to list files
+            # Consumer: curl -sL "https://api.github.com/repos/owner/repo/contents/path" | jq -r '.[].download_url'
+            folder="${file%/*}"
+            download_url="https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/${folder}"
+            
+            echo "{\"slug\":\"$slug\",\"name\":\"$name\",\"description\":\"$description\",\"path\":\"$file\",\"download_url\":\"$download_url\"}"
+          done | jq -s '.')
+          
+          # Create full index with timestamp
+          echo "{\"version\":1,\"updated_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"skills\":$index_json}" > skills-index.json
+          
+          # Generate markdown table for summary
+          cat > skills-table.md << 'EOF'
+          | Slug | Name | Description |
+          |------|------|-------------|
+          EOF
+          jq -r '.skills[] | "| \(.slug) | \(.name // .slug) | \(.description // "") |"' skills-index.json >> skills-table.md
+          
+          # Output for subsequent steps
+          echo "index_file=skills-index.json" >> $GITHUB_OUTPUT
+          echo "table_file=skills-table.md" >> $GITHUB_OUTPUT
+
+      - name: Upload Skills Index Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: skills-index
+          path: skills-index.json
+          retention-days: 32
+
+      - name: Update Gist
+        id: gist
+        run: |
+          set -x
+          # Gist-id filename matches workflow name (without .yml) - same as config workflow field
+          GIST_ID_FILE=".github/skills-index.gist-id"
+          
+          # Try to read existing gist ID from file
+          if [ -f "$GIST_ID_FILE" ]; then
+            GIST_ID=$(cat "$GIST_ID_FILE")
+          else
+            GIST_ID=""
+          fi
+          
+          if [ -z "$GIST_ID" ]; then
+            # Create new gist
+            RESULT=$(gh gist create --public --desc "PicoClaw Skills Index" skills-index.json)
+            GIST_ID=${RESULT##*/}  # remove everything up to last /
+            echo "Created new gist: $GIST_ID"
+            # Save gist ID to file
+            mkdir -p .github
+            echo "$GIST_ID" > "$GIST_ID_FILE"
+            echo "::warning::New gist created and saved to $GIST_ID_FILE"
+          else
+            gh gist edit "$GIST_ID" --filename skills-index.json
+          fi
+          echo "gist_url=https://gist.github.com/$GIST_ID" >> $GITHUB_OUTPUT
+          echo "Gist URL: https://gist.github.com/$GIST_ID"
+          set +x
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Commit Gist ID
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update skills index gist ID"
+          file_pattern: ".github/*.gist-id"
+
+      - name: Update Workflow Summary
+        run: |
+          echo "## Skills Index" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Last updated: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          cat skills-table.md >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Gist:** ${{ steps.gist.outputs.gist_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Download the full index from the artifact or gist." >> $GITHUB_STEP_SUMMARY
