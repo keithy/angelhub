@@ -86,17 +86,26 @@ jobs:
           FULL_REF="${{ github.workflow_ref }}"
           WITHOUT_REF="${FULL_REF%@*}"
           FILENAME="${WITHOUT_REF##*/}"
-          echo "name=${FILENAME%.*}" >> $GITHUB_OUTPUT
+          NAME="${FILENAME%.*}"
+          echo "name=${NAME}" >> $GITHUB_OUTPUT
 
-      - name: Generate Markdown List
+      - name: Generate Output Files
         run: |
-          # Generate markdown list for summary
           workflow_name="${{ steps.workflow.outputs.name }}"
+          
+          # Generate markdown list for summary
           cat > "${workflow_name}.md" << 'EOF'
           | Slug | Name | Description |
           |------|------|-------------|
           EOF
           jq -r '.skills[] | "| \(.slug) | \(.name // .slug) | \(.description // "") |"' skills-index.json >> "${workflow_name}.md"
+          
+          # Rename json to match workflow name
+          mv skills-index.json "${workflow_name}.json"
+          
+          # Add link to JSON file
+          echo "" >> "${workflow_name}.md"
+          echo "[${workflow_name}.json](${workflow_name}.json)" >> "${workflow_name}.md"
 
       - name: Update Wiki
         run: |
@@ -108,7 +117,7 @@ jobs:
 
           git clone --depth 1 https://x-access-token:$GITHUB_TOKEN@github.com/${{ github.repository }}.wiki.git wiki
           cd wiki
-          cp ../skills-index.json .
+          cp "../${workflow_name}.json" .
           cp "../${workflow_name}.md" .
           git add .
           git commit -m "Update skills index" || echo "No changes to commit"
