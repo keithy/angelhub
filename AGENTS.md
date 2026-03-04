@@ -2,6 +2,16 @@
 
 > A skill registry for angelic AI agent workflows.
 
+## Code Review Mindset
+
+> **Assume existing code is working unless told otherwise and asked to debug.**
+
+When looking at code:
+- Don't assume it's broken - it likely works as intended
+- Ask before making changes unless explicitly asked to fix something
+- Don't refactor for style - focus on the specific task
+- If you see something that looks odd, ask before fixing
+
 ## Project Overview
 
 - **Purpose**: Provides reusable skills for AI agents across multiple ecosystems
@@ -43,10 +53,13 @@ angelhub/
 ## SKILL.md Format
 
 Skills use YAML frontmatter followed by markdown:
+
 ```yaml
 ---
-name: self-config
-description: Allows the agent to safely update its own configuration files
+name: skill-name
+description: What the skill does
+version: 1.0.0
+metadata: {"key": "value"}  # Optional, for nanobot compatibility
 ---
 
 # Skill Name
@@ -59,6 +72,21 @@ Description and capabilities...
 ## Usage
 How to use the skill...
 ```
+
+### Skill Script Convention
+
+Per the [Agent Skills Specification](https://agentskills.io/specification):
+
+- **Scripts location**: Place scripts in `scripts/` subdirectory
+- **Reference format**: Use relative path from skill root: `scripts/script-name.sh`
+- **Do NOT use**: Absolute paths or `./scripts/` prefix
+- **Examples**:
+  - ✅ `scripts/install-service.sh`
+  - ✅ `bash scripts/validate.sh`
+  - ❌ `./scripts/install.sh` (not needed)
+  - ❌ `/full/path/to/script.sh` (not needed)
+
+The agent resolves paths relative to the skill directory automatically.
 
 ## CI/CD
 
@@ -123,8 +151,12 @@ The Index registry (already in picoclaw at `pkg/skills/index_registry.go`) fetch
 | self | self-config | Safely update config with redaction and auto-rollback |
 | self | self-debug | Inspect health, logs, and configuration |
 | self | self-build | Build and compile the project |
-
-## Skills Index JSON Format
+| reflection | self-debug | Tools to inspect health, logs, configuration |
+| reflection | self-config | Safely update configuration files |
+| reflection | self-build | Build and compile the project |
+| reflection | self-service-systemd | Install and manage picoclaw as systemd service (Linux) |
+| reflection | self-service-launchd | Install and manage picoclaw as launchd service (macOS) |
+| reflection | self-service-runit | Install and manage picoclaw as runit service |
 
 The `skills-index.json` published to GitHub Wiki must follow this format:
 

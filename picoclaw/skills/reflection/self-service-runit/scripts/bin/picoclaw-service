@@ -1,0 +1,35 @@
+#!/bin/bash
+# picoclaw-service - runit wrapper for picoclaw
+
+set -euo pipefail
+
+SERVICE="${PICOCLAW_SERVICE_NAME:-picoclaw}"
+
+# Validate identifier (shared from service.sh)
+assert_is_identifier() {
+    if ! echo "$1" | grep -qE '^[a-zA-Z_][a-zA-Z0-9_-]*$'; then
+        echo "Error: $2" >&2
+        return 1
+    fi
+}
+
+assert_is_identifier "$SERVICE" "Invalid service name" || exit 1
+
+ACTION="${1:-}"
+[[ -z "$ACTION" ]] && { echo "Usage: $0 <start|stop|restart|status|enable|disable|logs|logs-follow>"; exit 1; }
+
+LOG_DIR="/var/log/$SERVICE"
+
+case "$ACTION" in
+    start|stop|restart|status|enable|disable)
+        sv "$ACTION" "$SERVICE"
+        ;;
+    logs)
+        LINES="${2:-50}"
+        tail -n "$LINES" "$LOG_DIR/current" 2>/dev/null || echo "No logs found"
+        ;;
+    logs-follow)
+        tail -f "$LOG_DIR/current" 2>/dev/null || echo "No logs found"
+        ;;
+    *) echo "Invalid action: $ACTION" >&2; exit 1 ;;
+esac

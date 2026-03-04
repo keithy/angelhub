@@ -38,7 +38,7 @@ StartLimitBurst=5
 [Service]
 Type=simple
 WorkingDirectory=%h/.${service_name}
-Environment="PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PATH=%h/.${service_name}/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="PICOCLAW_SERVICE_NAME=${service_name}"
 Environment="PICOCLAW_CONFIG=%h/.${service_name}/config.json"
 Environment="PICOCLAW_HOME=%h/.${service_name}"
@@ -70,7 +70,7 @@ StartLimitBurst=5
 [Service]
 Type=simple
 WorkingDirectory=%h/.config/${service_name}-%i
-Environment="PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PATH=%h/.${service_name}/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="PICOCLAW_SERVICE_NAME=${service_name}@%i"
 Environment="PICOCLAW_CONFIG=%h/.config/${service_name}-%i/config.json"
 Environment="PICOCLAW_HOME=%h/.config/${service_name}-%i/"
@@ -159,7 +159,26 @@ fi
 
 "service_template__$TEMPLATE" "$SERVICE_NAME" "$EXEC_START" > "$OUTPUT_FILE"
 
-# 4. Reload
+# 4. Install picoclaw-service plugin
+PICOCLAW_HOME="${PICOCLAW_HOME:-$HOME/.picoclaw}"
+PLUGINS_DIR="$PICOCLAW_HOME/plugins"
+echo "Installing picoclaw-service to $PLUGINS_DIR..."
+mkdir -p "$PLUGINS_DIR"
+cp "$SCRIPT_DIR/bin/picoclaw-service" "$PLUGINS_DIR/"
+chmod +x "$PLUGINS_DIR/picoclaw-service"
+
+# 5. Install picoclaw-manager if not present
+MANAGER="$PICOCLAW_HOME/bin/picoclaw-manager"
+if [[ ! -x "$MANAGER" ]]; then
+    echo "Installing picoclaw-manager to $MANAGER..."
+    mkdir -p "$PICOCLAW_HOME/bin"
+    cp "$SCRIPT_DIR/bin/picoclaw-manager" "$MANAGER"
+    chmod +x "$MANAGER"
+else
+    echo "picoclaw-manager already installed, skipping"
+fi
+
+# 6. Reload
 echo "  $ systemctl --user daemon-reload"
 systemctl --user daemon-reload
 

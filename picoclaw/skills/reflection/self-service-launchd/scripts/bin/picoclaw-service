@@ -1,0 +1,54 @@
+#!/bin/bash
+# picoclaw-service - launchd wrapper for picoclaw
+
+set -euo pipefail
+
+SERVICE="${PICOCLAW_SERVICE_NAME:-picoclaw}"
+
+# Validate identifier (shared from service.sh)
+assert_is_identifier() {
+    if ! echo "$1" | grep -qE '^[a-zA-Z_][a-zA-Z0-9_-]*$'; then
+        echo "Error: $2" >&2
+        return 1
+    fi
+}
+
+assert_is_identifier "$SERVICE" "Invalid service name" || exit 1
+
+ACTION="${1:-}"
+[[ -z "$ACTION" ]] && { echo "Usage: $0 <start|stop|restart|status|logs|logs-errors|logs-follow>"; exit 1; }
+
+plist="$HOME/Library/LaunchAgents/${SERVICE}.plist"
+LOG_DIR="$HOME/Library/Logs"
+
+case "$ACTION" in
+    start)
+        [[ -f "$plist" ]] && launchctl bootstrap gui/$(id -u) "$plist"
+        ;;
+    stop)
+        [[ -f "$plist" ]] && launchctl bootout gui/$(id -u) "$plist" 2>/dev/null || true
+        ;;
+    restart)
+        [[ -f "$plist" ]] && launchctl bootout gui/$(id -u) "$plist" 2>/dev/null || true
+        sleep 1
+        [[ -f "$plist" ]] && launchctl bootstrap gui/$(id -u) "$plist"
+        ;;
+    status)
+        launchctl list | grep "$SERVICE" || echo "Not running"
+        ;;
+    logs)
+        LINES="${2:-50}"
+        tail -n "$LINES" "$LOG_DIR/${SERVICE}.log" 2>/dev/null || echo "No logs found"
+        ;;
+    logs-errors)
+        LINES="${2:-50}"
+        tail -n "$LINES" "$LOG_DIR/${SERVICE}.err.log" 2>/dev/null || echo "No error logs found"
+        ;;
+    logs-follow)
+        tail -f "$LOG_DIR/${SERVICE}.log" "$LOG_DIR/${SERVICE}.err.log" 2>/dev/null || echo "No logs found"
+        ;;
+    *)
+        echo "Usage: $0 <start|stop|restart|status|logs|logs-errors|logs-follow>" >&2
+        exit 1
+        ;;
+esac

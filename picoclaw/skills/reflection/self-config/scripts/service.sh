@@ -27,13 +27,24 @@ assert_is_number ()
 
 SERVICE_NAME="${PICOCLAW_SERVICE_NAME:-picoclaw}"
 
+# Service management function - can be sourced by other scripts
+service_restart() {
+    local service="${1:-$SERVICE_NAME}"
+    echo "Restarting service: $service"
+    systemctl --user restart "$service"
+    echo "Done."
+}
+
+# Only run main logic when executed (not sourced)
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+
 COMMAND="${1:-help}"
 assert_is_identifier "$COMMAND" "Action must be a valid identifier" || exit 1
 
 SERVICE="${2:-$SERVICE_NAME}"
 assert_is_identifier "$SERVICE" "Service name must be a valid identifier" || exit 1
 
-CONFIG="${3:-${PICOCLAW_CONFIG:-$HOME/.picoclaw/config.json}}"
+CONFIG="${PICOCLAW_CONFIG:-$HOME/.picoclaw/config.json}"
 
 [[ -n "$CONFIG" ]] && ! [[ -f "$CONFIG" ]] && echo "Expected file" && exit 1
 
@@ -41,12 +52,12 @@ case "$COMMAND" in
 
     restart)
 
-        echo "Restarting service: $SERVICE"
-        systemctl --user restart "$SERVICE"
-        echo "Done."
+        service_restart "$SERVICE"
     ;;
 
     _rollback)
+        # Use argument directly - always passed by caller
+        CONFIG="$3"
         
         # Check if marker file exists (auto-rollback was set)
         MARKER="${CONFIG}-PENDING-ROLLBACK"
@@ -62,23 +73,21 @@ case "$COMMAND" in
         "$SCRIPT_DIR/config.sh" rollback "$CONFIG"
 
         echo "[ROLLBACK] Restarting service: $SERVICE"
-        systemctl --user restart "$SERVICE" || true
+        service_restart "$SERVICE" || true
         echo "Rollback complete."
 
     ;;
 
     restart-with-auto-rollback)
 
-        TIMEOUT="${TIMEOUT:-}"
-        TIMEOUT="${4:-120}"
+        TIMEOUT="${4:-${TIMEOUT:-120}}"
         assert_is_number "$TIMEOUT" "Timer must be number of seconds" || exit 1
 
         # Create marker file
         MARKER="${CONFIG}-PENDING-ROLLBACK"
         
         # Restart service first
-        echo "Restarting service: $SERVICE"
-        systemctl --user restart "$SERVICE"
+        service_restart "$SERVICE"
         
         echo "Auto-rollback armed for $SERVICE (timeout: ${TIMEOUT}s)"
         echo "Marker: $MARKER"
@@ -111,7 +120,7 @@ case "$COMMAND" in
             rm -f "$MARKER"
             echo "Rollback cancelled. Changes confirmed."
         else
-            echo "No pending rollback to confirm."
+            echo "No pending rollback to cancel."
         fi
     
     ;;
@@ -129,7 +138,7 @@ case "$COMMAND" in
         echo ""
         echo "Environment:"
         echo "  PICOCLAW_SERVICE_NAME       Default service name (default: picoclaw)"
-        echo "  PICOCLAW_CONFIG             Default config file  (default: picoclaw)"
+        echo "  PICOCLAW_CONFIG             Default config file  (default: ~/.picoclaw/config.json)"
         exit 0
         ;;
 
@@ -139,3 +148,5 @@ case "$COMMAND" in
         exit 1
         ;;
 esac
+
+fi  # End sourced execution guard

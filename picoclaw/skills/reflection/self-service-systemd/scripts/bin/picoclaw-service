@@ -1,0 +1,37 @@
+#!/bin/bash
+# picoclaw-service - systemd wrapper for picoclaw
+
+set -euo pipefail
+
+SERVICE="${PICOCLAW_SERVICE_NAME:-picoclaw}"
+
+# Validate identifier (shared from service.sh)
+assert_is_identifier() {
+    if ! echo "$1" | grep -qE '^[a-zA-Z_][a-zA-Z0-9_-]*$'; then
+        echo "Error: $2" >&2
+        return 1
+    fi
+}
+
+assert_is_identifier "$SERVICE" "Invalid service name" || exit 1
+
+ACTION="${1:-}"
+[[ -z "$ACTION" ]] && { echo "Usage: $0 <start|stop|restart|status|enable|disable|logs|logs-errors|logs-follow>"; exit 1; }
+
+case "$ACTION" in
+    start|stop|restart|status|enable|disable)
+        systemctl --user "$ACTION" "$SERVICE"
+        ;;
+    logs)
+        LINES="${2:-50}"
+        journalctl --user-unit "$SERVICE" -n "$LINES"
+        ;;
+    logs-errors)
+        LINES="${2:-50}"
+        journalctl --user-unit "$SERVICE" -p err -n "$LINES"
+        ;;
+    logs-follow)
+        journalctl --user-unit "$SERVICE" -f
+        ;;
+    *) echo "Invalid action: $ACTION" >&2; exit 1 ;;
+esac

@@ -1,6 +1,10 @@
 ---
 name: self-config
 description: Allows the agent to safely update its own configuration files
+license: MIT
+metadata:
+  author: keithy@consultant.com
+  version: 1.0.0
 ---
 
 # Self-Config Skill Capabilities
