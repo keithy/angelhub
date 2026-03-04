@@ -14,23 +14,25 @@ Tools for picoclaw to inspect its own health, logs, and configuration.
 
 This skill uses a helper script `scripts/debug.sh` to provide cross-platform diagnostics.
 
-**Usage:** `exec "scripts/debug.sh [action] [service_name] [log_lines]"`
+**Usage:** `exec "scripts/debug.sh [action] [log_lines]"`
 
-| Action | Description | Default Service | Default Lines |
-|---|---|---|---|
-| `logs` | Fetches recent logs for the agent service. | `$PICOCLAW_SERVICE_NAME` | 50 |
-| `logs-errors`| Fetches only error logs for the agent service. | `$PICOCLAW_SERVICE_NAME` | 50 |
-| `service-status`| Checks the status of the agent service. | `$PICOCLAW_SERVICE_NAME` | N/A |
-| `config-status`| Shows the agent's configuration status (`picoclaw status`).| N/A | N/A |
-| `config-safe` | Displays the config file with sensitive keys redacted. | N/A | N/A |
+Service name is read from `$PICOCLAW_SERVICE_NAME` environment variable (defaults to `picoclaw`).
+
+| Action | Description | Default Lines |
+|---|---|---|
+| `logs` | Fetches recent logs for the agent service. | 50 |
+| `logs-errors`| Fetches only error logs for the agent service. | 50 |
+| `service-status`| Checks the status of the agent service. | N/A |
+| `config-status`| Shows the agent's configuration status (`picoclaw status`).| N/A |
+| `config-safe` | Displays the config file with sensitive keys redacted. | N/A |
 
 ### Examples
 
 - **Get latest logs:**
   `exec "skills/self-debug/scripts/debug.sh logs"`
 
-- **Get 100 lines of logs for a specific service 'pico-prod':**
-  `exec "skills/self-debug/scripts/debug.sh logs pico-prod 100"`
+- **Get 100 lines of logs:**
+  `exec "skills/self-debug/scripts/debug.sh logs 100"`
 
 - **Check service status:**
   `exec "skills/self-debug/scripts/debug.sh service-status"`

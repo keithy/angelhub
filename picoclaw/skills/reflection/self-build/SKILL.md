@@ -48,7 +48,7 @@ cd /infra/code/picoclaw/build
 ln -sf picoclaw-linux-<arch> picoclaw
 
 # Restart service (from self-config)
-TIMEOUT=300 scripts/service.sh restart-with-auto-rollback
+TIMEOUT=300 scripts/picoclaw-safe-restart restart-with-auto-rollback
 ```
 
 **Note**: `make build` already updates the symlink. Just restart to switch.
@@ -57,7 +57,7 @@ TIMEOUT=300 scripts/service.sh restart-with-auto-rollback
 
 ```bash
 # If works: cancel rollback
-scripts/service.sh cancel-auto-rollback
+scripts/picoclaw-safe-restart cancel-auto-rollback
 
 # If failed: restore previous binary
 cd /infra/code/picoclaw/build

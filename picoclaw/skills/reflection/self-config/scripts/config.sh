@@ -2,6 +2,26 @@
 
 # config: A tool for presenting config in insecure channels.
 
+picoclaw_plugin_init() {
+    # Try to find picoclaw-manager or picoclaw in PATH
+    if command -v picoclaw 2>/dev/null; then
+        PICOCLAW_MANAGER='picoclaw'
+    fi
+
+    if command -v picoclaw-manager 2>/dev/null; then
+        PICOCLAW_MANAGER='picoclaw-manager'
+    fi
+
+    [[ -z "${PICOCLAW_MANAGER:-}" ]] && echo "Picoclaw plugin handler not found" && exit 1
+
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    export PICOCLAW_SERVICE_NAME="${PICOCLAW_SERVICE_NAME:-picoclaw}"
+    export PICOCLAW_CONFIG="${PICOCLAW_CONFIG:-$HOME/.picoclaw/config.json}"
+    export PICOCLAW_HOME="${PICOCLAW_HOME:-${PICOCLAW_CONFIG%/*}}"
+}
+
+picoclaw_plugin_init
+
 # Input validation functions
 assert_is_identifier() {
     if ! echo "$1" | grep -qE '^[a-zA-Z_][a-zA-Z0-9_-]*$'; then

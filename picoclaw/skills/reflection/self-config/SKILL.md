@@ -16,14 +16,19 @@ metadata:
 ## Tools used
 - `scripts/config.sh`: Base utility for presenting redacted JSON files.
 - `scripts/config-patch.sh`: Tools for iterative patching of a staged `config.new.json` file.
-- `scripts/service.sh`: Manages service restarts with auto-rollback.
+- `scripts/picoclaw-safe-restart`: Manages service restarts with auto-rollback.
 - `jq`: Used internally for JSON manipulation.
 
 ## View Current Configuration
 
-### Redacted (Full)
+### Show (Full redacted)
 ```bash
-scripts/config.sh redacted
+scripts/config.sh show
+```
+
+### Show (Part redacted)
+```bash
+scripts/config.sh show 'agents.defaults'
 ```
 
 ### Summary (Filtered)
@@ -56,7 +61,9 @@ scripts/config-patch.sh diff
 
 ### 4. View Staged Config
 ```bash
-scripts/config-patch.sh config
+scripts/config-patch.sh show
+# OR
+scripts/config-patch.sh show 'agents.defaults'
 # OR
 scripts/config-patch.sh summary
 ```
@@ -78,16 +85,16 @@ Commit the patch, restart the service, and create a timer that will rollback
 unless 'confirm' action is performed. Default is 120 seconds. 
 
 ```bash
-TIMEOUT=300 scripts/service.sh restart-with-auto-rollback
+TIMEOUT=300 scripts/picoclaw-safe-restart restart-with-auto-rollback
 ```
 
 ### 8. Cancel Auto Rollback
 If the agent is still working and the changes are correct, cancel the auto-rollback to lock in the update.
 ```bash
-scripts/service.sh cancel-auto-rollback
+scripts/picoclaw-safe-restart cancel-auto-rollback
 ```
 
 ## Safety Rules
 1. **Always** use `start` before applying patches.
-2. **Never** manually edit the `.secrets.json` file.
-3. **Always** confirm your changes within the time limit after a `switch`.
+2. **Never** manually or directly edit or view or grep the `.secrets.json` file, use `scripts/config.sh show [path.to.item]`
+3. **Always** confirm your changes within the time limit after a `restart-with-auto-rollback`.
