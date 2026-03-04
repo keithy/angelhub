@@ -34,9 +34,7 @@ assert_is_safe() {
 }
 
 COMMAND="${1:-help}"
-
-PICOCLAW_CONFIG="${2:-}"
-PICOCLAW_CONFIG="${PICOCLAW_CONFIG:-$HOME/.picoclaw/config.json}"
+PICOCLAW_CONFIG="${PICOCLAW_CONFIG:-${2:-$HOME/.picoclaw/config.json}}"
 
 assert_is_safe "$COMMAND" "Command must be a valid identifier" || exit 1
 assert_is_file_path "$PICOCLAW_CONFIG" "Config file path must be valid" || exit 1
@@ -62,12 +60,17 @@ EXCLUDE_PATTERN="max_tokens|auth_method|enable_auth|auth_type"
 # Shared function: extract secrets if not already done
 redact_secrets() {
     
-    # Check if original has any secrets
-    paths=$(jq -c "paths(scalars) | select(.[-1] | tostring | ascii_downcase | (test(\"$SECRET_PATTERN\"; \"i\") and (test(\"$EXCLUDE_PATTERN\"; \"i\") | not)))" "$PICOCLAW_CONFIG" 2>/dev/null) || return 0
-    
     # Create staging file in temp (global var for trap cleanup)
     CONFIG_TMP=$(mktemp)
     cp "$PICOCLAW_CONFIG" "$CONFIG_TMP"
+    
+    # Check if original has any secrets
+    paths=$(jq -c "paths(scalars) | select(.[-1] | tostring | ascii_downcase | (test(\"$SECRET_PATTERN\"; \"i\") and (test(\"$EXCLUDE_PATTERN\"; \"i\") | not)))" "$PICOCLAW_CONFIG" 2>/dev/null) || return 0
+    
+    # If no secrets found, we're done - just return with the copy
+    if [ -z "$paths" ]; then
+        return 0
+    fi
     
     # Extract secrets directly to final location
     SECRETS_TMP=$(mktemp)
@@ -127,13 +130,30 @@ summarize()
     ' "${1}" | jq 'with_entries(select(.value != null))'
 }
 
+# show: Extract and display a config section
+# Usage: show <file> [path]
+#   file: config file (required)
+#   path: dot-notation (e.g., "agents.defaults.model") or empty for full config
+show()
+{
+    local file="$1"
+    local path="${2:-}"
+    
+    if [ -z "$path" ]; then
+        # No path - show full config
+        cat "$file"
+    else
+        # Convert dot-notation to jq path
+        jq ".${path#.}" "$file"
+    fi
+}
+
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     case "$COMMAND" in
 
-        redacted)  
-        
+        show|redacted)
             redact_secrets
-            cat "$CONFIG_TMP"
+            show "$CONFIG_TMP" "${2:-}"
         ;;
 
         summary)
@@ -148,8 +168,9 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
         help)
             echo "Usage: $0 <command> [config_file]"
             echo "Commands:"
-            echo "  redacted   - Show config (default: PICOCLAW_CONFIG)"
-            echo "  summary    - Show config with unused models/chatconfigs filtered"
+            echo "  show [path] - Show config with secrets redacted (path: dot-notation)"
+            echo "  redacted    - Show config with secrets redacted (full)"
+            echo "  summary     - Show config with unused models/chatconfigs filtered"
             exit 0
         ;;
 

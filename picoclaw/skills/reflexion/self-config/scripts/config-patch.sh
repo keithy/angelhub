@@ -91,10 +91,10 @@ case "$COMMAND" in
         exit 0     
     ;;
 
-    show|redacted|config)
-        # Output the full staged config
-   
-        cat "$STAGING_FILE"
+    show)
+        # Output the staged config, optionally with path extraction
+        # Usage: show [path]
+        show "$STAGING_FILE" "${2:-}"
     ;;
 
     diff)
@@ -130,16 +130,17 @@ case "$COMMAND" in
     help)
         echo "Usage: $0 <command> [config_file]"
         echo "Commands:"
-        echo "  start      - Create staging file with redacted secrets"
-        echo "  sort       - Sort JSON keys alphabetically"
-        echo "  diff       - Show staged changes"
-        echo "  commit     - Apply staged changes to config"
-        echo "  reset      - Clear staging (discard changes)"
-        echo "  rollback   - Restore from last backup"
-        echo "  status     - Show current state"
-        echo "  summary    - Show summary of the staged config with unused models/chatconfigs filtered"
-        echo "  config     - Show the staged config"
-        echo "  <jq expr>  - Apply inline jq patch (e.g. '.agents.model=\"gpt-4\"')"
+        echo "  start         - Create staging file with redacted secrets"
+        echo "  sort          - Sort JSON keys alphabetically"
+        echo "  diff          - Show staged changes"
+        echo "  commit        - Apply staged changes to config"
+        echo "  reset         - Clear staging (discard changes)"
+        echo "  rollback      - Restore from last backup"
+        echo "  status        - Show current state"
+        echo "  show [path]   - Show staged config (path: dot-notation, e.g. agents.defaults)"
+        echo "  summary       - Show summary of the staged config with unused models/chatconfigs filtered"
+        echo "  config        - Show the staged config (full)"
+        echo "  <jq expr>     - Apply inline jq patch (e.g. '.agents.model=\"gpt-4\"')"
         exit 0
         ;;
 
