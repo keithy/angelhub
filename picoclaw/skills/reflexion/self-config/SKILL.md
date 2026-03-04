@@ -74,13 +74,13 @@ Commit the patch, restart the service, and create a timer that will rollback
 unless 'confirm' action is performed. Default is 120 seconds. 
 
 ```bash
-TIMEOUT=300 scripts/service.sh restart-auto-rollback
+TIMEOUT=300 scripts/service.sh restart-with-auto-rollback
 ```
 
-### 8. Confirm
-If the agent is still working and the changes are correct, confirm the update to remove the rollback marker.
+### 8. Cancel Auto Rollback
+If the agent is still working and the changes are correct, cancel the auto-rollback to lock in the update.
 ```bash
-scripts/service.sh confirm
+scripts/service.sh cancel-auto-rollback
 ```
 
 ## Safety Rules

@@ -67,7 +67,7 @@ case "$COMMAND" in
 
     ;;
 
-    restart-auto-rollback)
+    restart-with-auto-rollback)
 
         TIMEOUT="${TIMEOUT:-}"
         TIMEOUT="${4:-120}"
@@ -97,13 +97,13 @@ case "$COMMAND" in
             echo "Timer PID: $TIMER_PID"
             echo "----------------------------------------------------"
             echo "Service will ROLLBACK in $TIMEOUT seconds if not confirmed."
-            echo "To confirm: service.sh confirm $SERVICE"
+            echo "To confirm: service.sh cancel-auto-rollback $SERVICE"
             echo "----------------------------------------------------"
         } | tee "$MARKER"
 
     ;;
 
-    confirm)
+    cancel-auto-rollback)
 
         MARKER="${CONFIG}-PENDING-ROLLBACK"
             
@@ -121,9 +121,9 @@ case "$COMMAND" in
         echo ""
         echo "Commands:"
         echo "  restart [service]           Restart service (default: \$PICOCLAW_SERVICE_NAME or picoclaw)"
-        echo "  auto-rollback [service] [config] [timeout]"
+        echo "  restart-with-auto-rollback [service] [config] [timeout]"
         echo "                              Arm rollback timer, restart service"
-        echo "  confirm [service] [config]  Cancel pending rollback"
+        echo "  cancel-auto-rollback [service] [config]"
         echo "  _rollback [service] [config]"
         echo "                              Internal: check marker, rollback if present"
         echo ""
