@@ -132,6 +132,21 @@ sudo loginctl enable-linger $(whoami)
 - Linux with systemd
 - User must have permission to run user services
 
+### PATH Configuration
+
+After installation, ensure `~/.picoclaw/bin` is in your PATH to use picoclaw commands:
+
+```bash
+# Add to ~/.bashrc or ~/.zshrc
+echo 'export PATH="$HOME/.picoclaw/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+Verify with:
+```bash
+which picoclaw
+```
+
 ## Skills Used
 
 - `self-debug` - For viewing logs and diagnosing issues

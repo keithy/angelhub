@@ -59,7 +59,7 @@ case "$1" in
         ;;
     config-safe)
         jq 'walk(if type == "object" then with_entries(if .key | ascii_downcase |
-            (contains("key") or contains("token") or contains("secret")) 
+            (contains("key") or contains("token") or contains("secret") or contains("pass")) 
             then .value = "REDACTED" else . end) else . end)' "${PICOCLAW_CONFIG}"
         ;;
     *)

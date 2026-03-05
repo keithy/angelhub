@@ -13,8 +13,8 @@ COMMAND="${1:-help}"
 
 case "$COMMAND" in
 
-    start|sort)
-        
+    start)
+
         [ -f "$SECRETS_FILE" ] && { echo "Error: Session active. Commit or reset first."; exit 1; }
         [ ! -f "$PICOCLAW_CONFIG" ] && { echo "Error: $PICOCLAW_CONFIG not found."; exit 1; }
         
@@ -29,18 +29,7 @@ case "$COMMAND" in
         SECRETS_TMP=""
         
         echo "Start: Redacted staging file created. Secrets mapped to $SECRETS_FILE"
-        
-    ;;&
-
-    start)     
-        exit 0
-    ;;
-
-    sort)
-      
-        { rm "$STAGING_FILE" ; jq -S . > "$STAGING_FILE"; } < "$STAGING_FILE"
-           
-        echo "Sorted: keys in $STAGING_FILE"
+             
         exit 0
     ;;
 
@@ -131,7 +120,7 @@ case "$COMMAND" in
         echo "Usage: $0 <command> [config_file]"
         echo "Commands:"
         echo "  start         - Create staging file with redacted secrets"
-        echo "  sort          - Sort JSON keys alphabetically"
+        echo "  sort          - Sort JSON keys alphabetically (use: config.sh sort)"
         echo "  diff          - Show staged changes"
         echo "  commit        - Apply staged changes to config"
         echo "  reset         - Clear staging (discard changes)"

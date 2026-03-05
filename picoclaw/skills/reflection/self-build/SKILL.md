@@ -1,6 +1,6 @@
 ---
 name: self-build
-description: Build, test, and contribute to PicoClaw with safe rollout.
+description: WIP - PLACEHOLDER -  Build, test, and contribute to PicoClaw with safe rollout.
 license: MIT
 metadata:
   author: keithy@consultant.com

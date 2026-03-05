@@ -154,7 +154,7 @@ summarize()
 # Usage: show <file> [path]
 #   file: config file (required)
 #   path: dot-notation (e.g., "agents.defaults.model") or empty for full config
-show()
+config_show()
 {
     local file="$1"
     local path="${2:-}"
@@ -168,12 +168,20 @@ show()
     fi
 }
 
+config_sort()
+{
+    local file="$1"
+    [ ! -f "$file" ] && { echo "Error: $file not found."; exit 1; }
+    { rm "$file" ; jq -S . > "$file"; } < "$file"
+    echo "Sorted: $file"
+}
+
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     case "$COMMAND" in
 
         show|redacted)
             redact_secrets
-            show "$CONFIG_TMP" "${2:-}"
+            config_show "$CONFIG_TMP" "${2:-}"
         ;;
 
         summary)
@@ -185,12 +193,18 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
             exit 0     
         ;;
 
+        sort)
+            config_sort "$PICOCLAW_CONFIG"
+            exit 0
+        ;;
+
         help)
             echo "Usage: $0 <command> [config_file]"
             echo "Commands:"
             echo "  show [path] - Show config with secrets redacted (path: dot-notation)"
             echo "  redacted    - Show config with secrets redacted (full)"
             echo "  summary     - Show config with unused models/chatconfigs filtered"
+            echo "  sort        - Sort JSON keys alphabetically"
             exit 0
         ;;
 

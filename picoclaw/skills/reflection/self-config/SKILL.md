@@ -69,9 +69,9 @@ scripts/config-patch.sh summary
 ```
 
 ### 5. Sort Keys (Optional)
-Sort the keys in the staged file alphabetically.
+Sort the keys in the config file alphabetically.
 ```bash
-scripts/config-patch.sh sort
+scripts/config.sh sort
 ```
 
 ### 6. Reset (Abort)
