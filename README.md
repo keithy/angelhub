@@ -4,6 +4,10 @@
 
 AngelHub provides reusable skills for AI agents across multiple ecosystems.
 
+## Documentation
+
+- **[Federation Plan](federation-plan.md)** — Extending AngelHub to federate skills from external registries (ClawHub, Claude Code, etc.)
+
 ## Ecosystems
 
 | Ecosystem | Description |
